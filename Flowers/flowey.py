@@ -46,7 +46,7 @@ def datasets():
     return (train_ds, val_ds)
 
 def train():
-    train_ds, val_ds = datasets()
+    # train_ds, val_ds = datasets()
     data_augmentation = keras.Sequential([
       layers.RandomRotation(0.2),
       layers.RandomFlip("horizontal_and_vertical"),
@@ -68,7 +68,7 @@ def train():
       layers.Dropout(0.2),
       layers.Flatten(),
       layers.Dense(128, activation='relu'),
-      layers.Dense(len(class_names))
+      layers.Dense(5)
     ])
 
     model.compile(optimizer='adam',
@@ -122,12 +122,5 @@ def check(model, path):
     res = model.predict(img)
     print(f'{path} -> ({ress[np.argmax(res)]}) {res}')
 
-model = get()
-check(model, "/home/arch/dais.png")
-check(model, "/home/arch/dand.png")
-check(model, "/home/arch/ros1.png")
-check(model, "/home/arch/ros2.png")
-check(model, "/home/arch/sun.png")
-check(model, "/home/arch/suns.png")
-check(model, "/home/arch/tulips.png")
-
+# model = get()
+train()
