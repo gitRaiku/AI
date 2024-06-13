@@ -51,6 +51,7 @@ def train():
       layers.RandomRotation(0.2),
       layers.RandomFlip("horizontal_and_vertical"),
       layers.RandomRotation(0.2),
+      layers.RandomContrast(0.1),
       layers.RandomZoom(0.1)])
 
     model = Sequential([
@@ -59,7 +60,6 @@ def train():
       layers.Conv2D(16, 3, padding='same', activation='relu'),
       layers.MaxPooling2D(),
       layers.Dropout(0.1),
-      layers.Conv2D(32, 3, padding='same', activation='relu'),
       layers.Conv2D(32, 3, padding='same', activation='relu'),
       layers.MaxPooling2D(),
       layers.Dropout(0.1),

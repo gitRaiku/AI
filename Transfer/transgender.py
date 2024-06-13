@@ -141,11 +141,13 @@ def evl(model):
 
 def check(model, path):
     ress = ['cat', 'dog']
-    img = np.array([tf.keras.utils.img_to_array(tf.keras.utils.load_img(path, target_size=(img_h, img_w)))])
+    img = np.array([tf.keras.utils.img_to_array(tf.keras.utils.load_img(path, target_size=(160, 160)))])
     res = model.predict(img)
-    print(f'{path} -> ({ress[np.argmax(res)]}) {res}')
+    print(f'{path} -> ({ress[1 if (np.argmax(res) > 0.5) else 0]}) {res}')
 
-evl(get())
+# evl(get())
+model = get()
+check(model, '/home/raiku/mpv-shot0003.jpg')
 
 
 # train()
