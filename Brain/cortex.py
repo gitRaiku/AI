@@ -21,14 +21,28 @@ import torchvision.transforms.v2 as T
 from torchvision.io import read_image, ImageReadMode
 
 
-device = 'cpu'
+device = 'cuda'
 torch.set_default_device(device)
 torch.manual_seed(123)
 np.random.seed(123)
 
 class ImgDataset(Dataset):
-    def __init__(self, annotations_file, img_dir, transform=None, augment=None, target_transform=None):
-        self.img_labels = pd.read_csv(annotations_file, skipinitialspace=True, dtype={'id': 'string', 'class': 'int8'})
+    def __init__(self, annotations_file, img_dir, transform=None, augment=None, target_transform=None, eqn=False):
+        self.img_labels = pd.read_csv(annotations_file, skipinitialspace=True, dtype={'id': 'string', 'class': 'int8'}).to_numpy()
+        if eqn == True:
+            tr = []
+            fl = []
+            for x in self.img_labels:
+                if x[1] == 1:
+                    tr.append(x)
+                else:
+                    fl.append(x)
+
+            print(len(tr))
+            print(len(fl))
+            self.img_labels = np.append(fl, [tr, tr, tr, tr, tr])
+            self.img_labels = self.img_labels.reshape(len(self.img_labels) // 2, 2)
+
         self.img_dir = img_dir
         self.transform = transform
         self.augment = augment
@@ -38,9 +52,9 @@ class ImgDataset(Dataset):
         return len(self.img_labels)
 
     def __getitem__(self, idx):
-        img_path = os.path.join(self.img_dir, f'{self.img_labels.iloc[idx, 0]}.png')
+        img_path = os.path.join(self.img_dir, f'{self.img_labels[idx][0]}.png')
         image = read_image(img_path, mode=ImageReadMode.GRAY)
-        label = torch.tensor(self.img_labels.iloc[idx, 1], device=device, dtype=torch.float32)
+        label = torch.tensor(self.img_labels[idx][1], device=device, dtype=torch.float32)
 
         if self.transform:
             image = self.transform(image)
@@ -64,7 +78,7 @@ augment = torch.nn.Sequential(
     T.Normalize([0.0], [1.0]))
 
 dpath = '/home/arch/.datasets/brain'
-trainds = ImgDataset(f'{dpath}/train_labels.txt', f'{dpath}/data', imgtrans, augment)
+trainds = ImgDataset(f'{dpath}/train_labels.txt', f'{dpath}/data', imgtrans, augment, eqn=True)
 traindl = DataLoader(trainds, batch_size=64, shuffle=True, num_workers=8)
 
 valds = ImgDataset(f'{dpath}/validation_labels.txt', f'{dpath}/data', imgtrans, augment)
@@ -72,6 +86,7 @@ valdl = DataLoader(valds, batch_size=64, shuffle=True, num_workers=8)
 
 testds = ImgDataset(f'{dpath}/sample_submission.txt', f'{dpath}/data', imgtrans)
 testdl = DataLoader(testds, batch_size=64, shuffle=True, num_workers=8)
+
 '''
 train_features, train_labels = next(iter(traindl))
 img = train_features[0]
@@ -110,18 +125,45 @@ class Net(nn.Module):
         x = torch.flatten(F.sigmoid(self.fc3(x)))
         return x
 
+def compAcc(outputs, labels):
+    t1 = t2 = o1 = o2 = 0
+    for idx, o in enumerate(outputs):
+        if (labels[idx] >= 0.5):
+            t1 += 1
+        else: 
+            t2 += 1
+        if (o >= 0.5) == (labels[idx] >= 0.5):
+            if (o >= 0.5):
+                o1 += 1
+            else:
+                o2 += 1
+    return np.array([t1, o1, t2, o2], dtype=np.int32)
+
+def getStats(s):
+    tp = s[1]
+    tn = s[3]
+    fp = s[0] - tp
+    fn = s[2] - tn
+    tot = s[0] + s[2]
+    acc = (tp + tn) / tot * 100
+    p = tp / (tp + fp)
+    r = tp / (tp + fn)
+    f1 = 2 * p * r / (p + r)
+    return f'acc: {acc:.2f} f1: {f1:.2f} {tp} {fp} {tn} {fn}'
+
+
 def train():
     net = Net()
+    net.load_state_dict(torch.load("model-1.pth"))
 
     criterion = nn.BCELoss()
-    optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
+    optimizer = optim.AdamW(net.parameters())
 
     epochs = 10
     for epoch in range(epochs):  # loop over the dataset multiple times
         print(f'\nNew epoch: {epoch}')
         def train(bar=None):
-            tot = 0
-            correct = 0
+            stats = np.zeros(4, dtype=np.int32)
             for i, data in enumerate(traindl, 0):
                 inputs, labels = data
                 optimizer.zero_grad()
@@ -130,42 +172,36 @@ def train():
                 loss.backward()
                 optimizer.step()
 
-                tot += len(outputs)
-                for idx, o in enumerate(outputs):
-                    if (o >= 0.5) == (labels[idx] >= 0.5):
-                        correct += 1
+                stats = np.add(stats, compAcc(outputs, labels))
 
                 if bar != None:
-                    bar.text(f'acc {(correct / tot) * 100:.2f}')
+                    bar.text(getStats(stats))
                     bar()
-            print(f'Train acc {(correct / tot) * 100:.2f}')
+            print(f'Train {getStats(stats)}')
 
         def val(bar=None):
-            tot = 0
-            correct = 0
+            stats = np.zeros(4, dtype=np.int32)
             for i, data in enumerate(valdl, 0):
                 inputs, labels = data
                 outputs = net(inputs)
 
+                stats = np.add(stats, compAcc(outputs, labels))
+
                 if bar != None:
-                    tot += len(outputs)
-                    for idx, o in enumerate(outputs):
-                        if (o >= 0.5) == (labels[idx] >= 0.5):
-                            correct += 1
-                    bar.text(f'acc {(correct / tot) * 100:.2f}')
+                    bar.text(getStats(stats))
                     bar()
-            print(f'Eval acc {(correct / tot) * 100:.2f}')
+            print(f'Eval {getStats(stats)}')
 
         if False:
             train()
             val()
         else:
-            with alive_bar(len(traindl), title='Train', max_cols=24) as bar:
+            with alive_bar(len(traindl), title='Train', max_cols=15) as bar:
                 train(bar)
-            with alive_bar(len(valdl), title='Eval', max_cols=24) as bar:
+            with alive_bar(len(valdl), title='Eval', max_cols=15) as bar:
                 val(bar)
+        torch.save(net.state_dict(), f"model-{epoch}.pth")
 
-    torch.save(net.state_dict(), "model.pth")
     return net
 
 def get():
@@ -174,37 +210,19 @@ def get():
     return net
 
 def test(net):
-    with alive_bar(len(valdl), title='Test', max_cols=24) as bar:
-        tot = 0
-        correct = 0
-        o1 = 0
-        o2 = 0
-        t1 = 0
-        t2 = 0
+    with alive_bar(len(valdl), title='Test', max_cols=15) as bar:
+        stats = np.zeros(4, dtype=np.int32)
         for i, data in enumerate(valdl, 0):
             inputs, labels = data
             outputs = net(inputs)
 
-            tot += len(outputs)
-            for idx, o in enumerate(outputs):
-                if (labels[idx] >= 0.5):
-                    t1 += 1
-                else:
-                    t2 += 1
-                if (o >= 0.5) == (labels[idx] >= 0.5):
-                    if (o >= 0.5):
-                        o1 += 1
-                    else:
-                        o2 += 1
-                    # print(f'{o} vs {labels[idx]}')
-                    # correct += 1
+            stats = np.add(stats, compAcc(outputs, labels))
 
             if bar != None:
-                bar.text(f'{(o1 / t1) * 100:.2f} {(o2 / t2) * 100:.2f}')
+                bar.text(getStats(stats))
                 bar()
-        print(f'{(o1 / t1) * 100:.2f} {(o2 / t2) * 100:.2f}')
-        # print(f'Test acc {(correct / tot) * 100:.2f}')
+        print(f'Test {getStats(stats)}')
 
-net = get()
+net = train()
 test(net)
 
