@@ -20,11 +20,7 @@ from torchvision.transforms import ToTensor
 import torchvision.transforms.v2 as T
 from torchvision.io import read_image, ImageReadMode
 
-
 device = 'cuda'
-torch.set_default_device(device)
-torch.manual_seed(123)
-np.random.seed(123)
 
 class ImgDataset(Dataset):
     def __init__(self, annotations_file, img_dir, transform=None, augment=None, target_transform=None, eqn=False):
@@ -53,7 +49,7 @@ class ImgDataset(Dataset):
 
     def __getitem__(self, idx):
         img_path = os.path.join(self.img_dir, f'{self.img_labels[idx][0]}.png')
-        image = read_image(img_path, mode=ImageReadMode.GRAY)
+        image = read_image(img_path, mode=ImageReadMode.GRAY).to(device)
         label = torch.tensor(self.img_labels[idx][1], device=device, dtype=torch.float32)
 
         if self.transform:
@@ -67,9 +63,12 @@ class ImgDataset(Dataset):
 
         return image, label
 
+def rescal(t):
+    return t / 127.5 - 1.0
+
 imgtrans = nn.Sequential(
         T.ToDtype(torch.float32, scale=False),
-        T.Lambda(lambda t: (t / 127.5) - 1.0),
+        T.Lambda(rescal),
         T.Normalize([0.0], [1.0]))
 
 augment = torch.nn.Sequential(
@@ -77,31 +76,29 @@ augment = torch.nn.Sequential(
     T.RandomAffine(degrees=6.0, translate=(0.1, 0.1), scale=(0.90, 1.0), fill=-1.0),
     T.Normalize([0.0], [1.0]))
 
+bsize = 64
 dpath = '/home/arch/.datasets/brain'
 trainds = ImgDataset(f'{dpath}/train_labels.txt', f'{dpath}/data', imgtrans, augment, eqn=True)
-traindl = DataLoader(trainds, batch_size=64, shuffle=True, num_workers=8)
+traindl = DataLoader(trainds, batch_size=bsize, shuffle=True, num_workers=0, generator=torch.Generator(device=device))
 
 valds = ImgDataset(f'{dpath}/validation_labels.txt', f'{dpath}/data', imgtrans, augment)
-valdl = DataLoader(valds, batch_size=64, shuffle=True, num_workers=8)
+valdl = DataLoader(valds, batch_size=bsize, shuffle=True, num_workers=0, generator=torch.Generator(device=device))
 
-testds = ImgDataset(f'{dpath}/sample_submission.txt', f'{dpath}/data', imgtrans)
-testdl = DataLoader(testds, batch_size=64, shuffle=True, num_workers=8)
 
-'''
-train_features, train_labels = next(iter(traindl))
-img = train_features[0]
-label = train_labels[0]
-fig = plt.figure()
-columns = 3
-rows = 3
-fig.add_subplot(rows, columns, 1)
-plt.imshow(img.squeeze(), cmap="gray", vmin=-1.0, vmax=1.0)
-for i in range(2, columns * rows +1):
-    fig.add_subplot(rows, columns, i)
-    cimg = augment(img)
-    plt.imshow(cimg.squeeze(), cmap="gray", vmin=-1.0, vmax=1.0)
-plt.show()
-'''
+def imshow():
+    train_features, train_labels = next(iter(traindl))
+    img = train_features[0]
+    label = train_labels[0]
+    fig = plt.figure()
+    columns = 3
+    rows = 3
+    fig.add_subplot(rows, columns, 1)
+    plt.imshow(img.squeeze(), cmap="gray", vmin=-1.0, vmax=1.0)
+    for i in range(2, columns * rows +1):
+        fig.add_subplot(rows, columns, i)
+        cimg = augment(img)
+        plt.imshow(cimg.squeeze(), cmap="gray", vmin=-1.0, vmax=1.0)
+    plt.show()
 
 class Net(nn.Module):
     def __init__(self):
@@ -122,47 +119,62 @@ class Net(nn.Module):
         x = torch.flatten(x, 1) # flatten all dimensions except batch
         x = self.activation(self.fc1(x))
         x = self.activation(self.fc2(x))
+        # x = self.fc3(x)
         x = torch.flatten(F.sigmoid(self.fc3(x)))
         return x
 
+'''
 def compAcc(outputs, labels):
-    t1 = t2 = o1 = o2 = 0
+    r = np.zeros((4), dtype=np.int32)
     for idx, o in enumerate(outputs):
-        if (labels[idx] >= 0.5):
-            t1 += 1
-        else: 
-            t2 += 1
+        r[0 if labels[idx] == 1 else 2] += 1
+        if torch.argmax(o) == labels[idx]:
+            r[1 if torch.argmax(o) == 1 else 3] += 1
+    return r
+'''
+def compAcc(outputs, labels):
+    r = np.zeros((4), dtype=np.int32)
+    for idx, o in enumerate(outputs):
+        r[0 if labels[idx] >= 0.5 else 2] += 1
         if (o >= 0.5) == (labels[idx] >= 0.5):
-            if (o >= 0.5):
-                o1 += 1
-            else:
-                o2 += 1
-    return np.array([t1, o1, t2, o2], dtype=np.int32)
+            r[1 if o >= 0.5 else 3] += 1
+    return r
+
+
 
 def getStats(s):
-    tp = s[1]
-    tn = s[3]
-    fp = s[0] - tp
-    fn = s[2] - tn
-    tot = s[0] + s[2]
-    acc = (tp + tn) / tot * 100
-    p = tp / (tp + fp)
-    r = tp / (tp + fn)
-    f1 = 2 * p * r / (p + r)
-    return f'acc: {acc:.2f} f1: {f1:.2f} {tp} {fp} {tn} {fn}'
+    try:
+        tp = s[1]
+        tn = s[3]
+        fp = s[0] - tp
+        fn = s[2] - tn
+        tot = s[0] + s[2]
+        acc = (tp + tn) / tot * 100
+        p = tp / (tp + fp)
+        if tp + fn == 0:
+            r = 1
+        else:
+            r = tp / (tp + fn)
+        f1 = 2 * p * r / (p + r)
+        return f'acc: {acc:.2f} f1: {f1:.2f} {tp} {fp} {tn} {fn}'
+    except:
+        return ''
 
 
 def train():
-    net = Net()
-    net.load_state_dict(torch.load("model-1.pth"))
+    net = Net().to(device)
+    # net.load_state_dict(torch.load("model.pth"))
+    # 2238 12762
 
+    # criterion = nn.CrossEntropyLoss(weight=torch.tensor([0.58677344, 3.38106603], dtype=torch.float32, device=device))
     criterion = nn.BCELoss()
     optimizer = optim.AdamW(net.parameters())
 
     epochs = 10
-    for epoch in range(epochs):  # loop over the dataset multiple times
+    for epoch in range(epochs):
         print(f'\nNew epoch: {epoch}')
         def train(bar=None):
+            print('Start train')
             stats = np.zeros(4, dtype=np.int32)
             for i, data in enumerate(traindl, 0):
                 inputs, labels = data
@@ -181,25 +193,33 @@ def train():
 
         def val(bar=None):
             stats = np.zeros(4, dtype=np.int32)
-            for i, data in enumerate(valdl, 0):
-                inputs, labels = data
-                outputs = net(inputs)
+            with torch.no_grad():
+                for i, data in enumerate(valdl, 0):
+                    inputs, labels = data
+                    outputs = net(inputs)
 
-                stats = np.add(stats, compAcc(outputs, labels))
+                    stats = np.add(stats, compAcc(outputs, labels))
 
-                if bar != None:
-                    bar.text(getStats(stats))
-                    bar()
+                    if bar != None:
+                        bar.text(getStats(stats))
+                        bar()
             print(f'Eval {getStats(stats)}')
 
-        if False:
-            train()
-            val()
-        else:
-            with alive_bar(len(traindl), title='Train', max_cols=15) as bar:
-                train(bar)
-            with alive_bar(len(valdl), title='Eval', max_cols=15) as bar:
-                val(bar)
+        try:
+            if False:
+                train()
+                val()
+            else:
+                with alive_bar(len(traindl), title='Train', max_cols=15) as bar:
+                    train(bar)
+                with alive_bar(len(valdl), title='Eval', max_cols=15) as bar:
+                    val(bar)
+        except KeyboardInterrupt:
+            print('Saving model to unfinished.pth')
+            torch.save(net.state_dict(), f"unfinished.pth")
+            exit()
+            
+        print(f'Saving model to model-{epoch}.pth')
         torch.save(net.state_dict(), f"model-{epoch}.pth")
 
     return net
@@ -223,6 +243,12 @@ def test(net):
                 bar()
         print(f'Test {getStats(stats)}')
 
-net = train()
-test(net)
+if __name__ == '__main__':
+    torch.set_default_device(device)
+    torch.multiprocessing.set_start_method('spawn', force=True)
+    torch.manual_seed(123)
+    np.random.seed(123)
+
+    net = train()
+    test(net)
 
