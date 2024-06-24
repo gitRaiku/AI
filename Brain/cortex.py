@@ -8,6 +8,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
+from sklearn.utils.class_weight import compute_class_weight
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -17,6 +19,7 @@ from torch.utils.data import DataLoader
 
 import torchvision as tv
 from torchvision.transforms import ToTensor
+from torchvision.transforms.functional import adjust_contrast
 import torchvision.transforms.v2 as T
 from torchvision.io import read_image, ImageReadMode
 
@@ -36,7 +39,7 @@ class ImgDataset(Dataset):
 
             print(len(tr))
             print(len(fl))
-            self.img_labels = np.append(fl, [tr, tr, tr, tr, tr])
+            self.img_labels = np.append(fl, [tr, tr, tr])
             self.img_labels = self.img_labels.reshape(len(self.img_labels) // 2, 2)
 
         self.img_dir = img_dir
@@ -44,16 +47,23 @@ class ImgDataset(Dataset):
         self.augment = augment
         self.target_transform = target_transform
 
+    def weights(self):
+        return compute_class_weight(class_weight='balanced', classes=np.unique(self.img_labels[:,1]), y=self.img_labels[:,1])
+
     def __len__(self):
         return len(self.img_labels)
 
     def __getitem__(self, idx):
         img_path = os.path.join(self.img_dir, f'{self.img_labels[idx][0]}.png')
         image = read_image(img_path, mode=ImageReadMode.GRAY).to(device)
-        label = torch.tensor(self.img_labels[idx][1], device=device, dtype=torch.float32)
+        ct = torch.tensor(self.img_labels[idx][1], dtype=torch.int64)
+        label = F.one_hot(ct, num_classes=2).type(torch.float32)
+        # label = torch.tensor(self.img_labels[idx][1], dtype=torch.float32)
 
         if self.transform:
             image = self.transform(image)
+
+        image = adjust_contrast(image, 1.8)
 
         if self.augment:
             image = self.augment(image)
@@ -64,7 +74,8 @@ class ImgDataset(Dataset):
         return image, label
 
 def rescal(t):
-    return t / 127.5 - 1.0
+    return t / 255.0
+    # return t / 127.5 - 1.0
 
 imgtrans = nn.Sequential(
         T.ToDtype(torch.float32, scale=False),
@@ -93,12 +104,16 @@ def imshow():
     columns = 3
     rows = 3
     fig.add_subplot(rows, columns, 1)
-    plt.imshow(img.squeeze(), cmap="gray", vmin=-1.0, vmax=1.0)
+    plt.imshow(img.squeeze(), cmap="gray", vmin=-0.0, vmax=1.0)
     for i in range(2, columns * rows +1):
         fig.add_subplot(rows, columns, i)
-        cimg = augment(img)
-        plt.imshow(cimg.squeeze(), cmap="gray", vmin=-1.0, vmax=1.0)
+        # cimg = augment(img)
+        # cimg = adjust_contrast(img, 1.5)
+        cimg = img
+        plt.imshow(cimg.squeeze(), cmap="gray", vmin=-0.0, vmax=1.0)
     plt.show()
+
+# imshow()
 
 class Net(nn.Module):
     def __init__(self):
@@ -107,30 +122,60 @@ class Net(nn.Module):
         self.conv1 = nn.Conv2d(1, 4, 5)
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(4, 8, 5)
-        self.fc1 = nn.Linear(8 * 53 * 53, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 1)
+        self.conv3 = nn.Conv2d(8, 16, 5)
+        self.apool = nn.AdaptiveAvgPool2d(5)
+        self.fc1 = nn.Linear(16 * 5 * 5, 32)
+        # self.fc1 = nn.Linear(16 * 24 * 24, 256)
+        self.fc2 = nn.Linear(32, 10)
+        self.fc3 = nn.Linear(10, 2)
+        self.dropout = nn.Dropout(0.2)
 
     def forward(self, x):
-        aconv = self.activation(self.conv1(x))
-        x = self.pool(aconv)
-        aconv = self.activation(self.conv2(x))
-        x = self.pool(aconv)
+        x = self.pool(self.activation(self.conv1(x)))
+        x = self.pool(self.activation(self.conv2(x)))
+        x = self.pool(self.activation(self.conv3(x)))
+        x = self.apool(x)
         x = torch.flatten(x, 1) # flatten all dimensions except batch
+        x = self.dropout(x)
         x = self.activation(self.fc1(x))
+        x = self.dropout(x)
         x = self.activation(self.fc2(x))
-        # x = self.fc3(x)
-        x = torch.flatten(F.sigmoid(self.fc3(x)))
+        x = self.fc3(x)
         return x
 
-'''
 def compAcc(outputs, labels):
     r = np.zeros((4), dtype=np.int32)
     for idx, o in enumerate(outputs):
-        r[0 if labels[idx] == 1 else 2] += 1
-        if torch.argmax(o) == labels[idx]:
+        r[0 if labels[idx][1] >= 0.5 else 2] += 1
+        if torch.argmax(o) == (1 if (labels[idx][1] >= 0.5) else 0):
             r[1 if torch.argmax(o) == 1 else 3] += 1
     return r
+
+
+def compAcc(outputs, labels):
+    r = np.zeros((4), dtype=np.int32)
+    for idx, o in enumerate(outputs):
+        r[0 if labels[idx][1] >= 0.5 else 2] += 1
+        if torch.argmax(o) == (1 if (labels[idx][1] >= 0.5) else 0):
+            r[1 if torch.argmax(o) == 1 else 3] += 1
+    return r
+
+def getStats(s):
+    tp = s[1]
+    tn = s[3]
+    fp = s[0] - tp
+    fn = s[2] - tn
+    tot = s[0] + s[2]
+    acc = (tp + tn) / tot * 100
+    p = tp / (tp + fp)
+    if tp + fn == 0:
+        tp += 1
+    r = tp / (tp + fn)
+    if p + r == 0:
+        r = 1
+    f1 = 2 * p * r / (p + r)
+    return f'acc: {acc:.2f} f1: {f1:.2f} {tp} {fp} {tn} {fn}'
+
 '''
 def compAcc(outputs, labels):
     r = np.zeros((4), dtype=np.int32)
@@ -139,8 +184,7 @@ def compAcc(outputs, labels):
         if (o >= 0.5) == (labels[idx] >= 0.5):
             r[1 if o >= 0.5 else 3] += 1
     return r
-
-
+'''
 
 def getStats(s):
     try:
@@ -155,6 +199,8 @@ def getStats(s):
             r = 1
         else:
             r = tp / (tp + fn)
+        if p + r == 0:
+            r = 1
         f1 = 2 * p * r / (p + r)
         return f'acc: {acc:.2f} f1: {f1:.2f} {tp} {fp} {tn} {fn}'
     except:
@@ -166,9 +212,11 @@ def train():
     # net.load_state_dict(torch.load("model.pth"))
     # 2238 12762
 
-    # criterion = nn.CrossEntropyLoss(weight=torch.tensor([0.58677344, 3.38106603], dtype=torch.float32, device=device))
-    criterion = nn.BCELoss()
-    optimizer = optim.AdamW(net.parameters())
+    weights = trainds.weights()
+    criterion = nn.BCEWithLogitsLoss(weight=torch.tensor(weights))
+    # criterion = nn.BCEWithLogitsLoss()
+
+    optimizer = optim.Adam(net.parameters())
 
     epochs = 10
     for epoch in range(epochs):
@@ -180,6 +228,8 @@ def train():
                 inputs, labels = data
                 optimizer.zero_grad()
                 outputs = net(inputs)
+                # o = torch.zeros([64, 2])
+                # l = torch.zeros([64, 2])
                 loss = criterion(outputs, labels)
                 loss.backward()
                 optimizer.step()
