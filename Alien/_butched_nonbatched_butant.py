@@ -1,7 +1,6 @@
 #!/bin/python
 
 # I want to fucking kill myself
-# Like fr fr on god no cap
 
 from alive_progress import alive_bar
 
@@ -42,6 +41,7 @@ class Treap: # This is not actually a treap
             return 0
 
     def cc(self, seq):
+        # s = np.zeros(2000, dtype=np.int32)
         s = np.zeros(len(seq), dtype=np.int32)
         for idx, e in enumerate(seq):
             s[idx] = self.c(e)
