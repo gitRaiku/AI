@@ -12,16 +12,36 @@ import numpy as np
 import pickle
 
 from sklearn.utils.class_weight import compute_class_weight
+from sklearn.feature_extraction.text import CountVectorizer
 
+'''
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
+'''
 
 device = 'cuda'
 
+dpath = '/home/arch/.datasets/butant/'
+
+floc = dpath + 'train'
+text = pd.read_csv(floc + '_samples.txt', delimiter='\t').to_numpy()[:,1]
+labels = pd.read_csv(floc + '_labels.txt', delimiter='\t').to_numpy()[:,1] - 1
+
+floc = dpath + 'validation'
+valtext = pd.read_csv(floc + '_samples.txt', delimiter='\t').to_numpy()[:,1]
+vallabels = pd.read_csv(floc + '_labels.txt', delimiter='\t').to_numpy()[:,1] - 1
+
+vectorizer = CountVectorizer(analyzer='char', ngram_range=(2, 2))
+X = vectorizer.fit_transform(text)
+print(X)
+
+
+
+'''
 class Treap: # This is not actually a treap
     def __init__(self, file):
         text = pd.read_csv(file + '_samples.txt', delimiter='\t').to_numpy()[:,1].flatten()
@@ -78,11 +98,6 @@ def compAcc(output, label):
     r = np.zeros((3, 3), dtype=np.int32)
     for idx, o in enumerate(output[0]):
         r[label[0][idx]][torch.argmax(o)] += 1
-        
-    '''
-    cp = np.argmax(output)
-    r[label][cp] += 1
-    '''
     return r
 
 def getStats(s):
@@ -186,5 +201,5 @@ if __name__ == '__main__':
     print(f'Unknown words {treap.unknown}')
 
     train(traindl, valdl, treap, len(treap.converter) + 21)
-
+'''
 
