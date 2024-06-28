@@ -1,4 +1,29 @@
 #!/bin/python
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+https://www.kaggle.com/code/dxtvzw/steam-games-dataset-eda
+
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
