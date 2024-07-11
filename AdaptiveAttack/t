@@ -1,0 +1,21 @@
+#!/bin/python
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+def unpickle(file):
+    import pickle
+    with open(file, 'rb') as fo:
+        dict = pickle.load(fo, encoding='bytes')
+    return dict
+
+dp = '/home/raiku/.datasets/cifar-10/data_batch_'
+train = [unpickle(f'{dp}1'), unpickle(f'{dp}2'), unpickle(f'{dp}3'), unpickle(f'{dp}4'), unpickle(f'{dp}5')]
+train_img = np.array([i[b'data'] for i in train]).reshape([-1, 3, 32, 32]).transpose(0, 2, 3, 1)
+train_labels = np.array([i[b'labels'] for i in train]).reshape([-1])
+test = unpickle('/home/raiku/.datasets/cifar-10/test_batch')
+meta = unpickle('/home/raiku/.datasets/cifar-10/batches.meta')
+label_names = meta[b'label_names']
+test_data = np.array(test[b'data'].reshape([-1, 3, 32, 32]).transpose(0, 2, 3, 1)
+test_labels = np.array(test[b'labels'])
+

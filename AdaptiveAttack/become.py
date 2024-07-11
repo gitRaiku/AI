@@ -1,6 +1,3 @@
-#!/bin/python
-# https://drive.google.com/drive/folders/1bCLTcvi6siddiHClBgJn0aRlBx6eZyI8
-
 from alive_progress import alive_bar
 
 import os
@@ -88,13 +85,6 @@ augment = torch.nn.Sequential(
     T.Normalize([0.0], [1.0]))
 
 bsize = 64
-dpath = '/home/arch/.datasets/brain'
-trainds = ImgDataset(f'{dpath}/train_labels.txt', f'{dpath}/data', imgtrans, augment, eqn=True)
-traindl = DataLoader(trainds, batch_size=bsize, shuffle=True, num_workers=0, generator=torch.Generator(device=device))
-
-valds = ImgDataset(f'{dpath}/validation_labels.txt', f'{dpath}/data', imgtrans, augment)
-valdl = DataLoader(valds, batch_size=bsize, shuffle=True, num_workers=0, generator=torch.Generator(device=device))
-
 
 def imshow():
     train_features, train_labels = next(iter(traindl))
@@ -114,6 +104,12 @@ def imshow():
     plt.show()
 
 # imshow()
+dpath = '/home/arch/.datasets/brain'
+trainds = ImgDataset(f'{dpath}/train_labels.txt', f'{dpath}/data', imgtrans, augment, eqn=True)
+traindl = DataLoader(trainds, batch_size=bsize, shuffle=True, num_workers=0, generator=torch.Generator(device=device))
+
+valds = ImgDataset(f'{dpath}/validation_labels.txt', f'{dpath}/data', imgtrans, augment)
+valdl = DataLoader(valds, batch_size=bsize, shuffle=True, num_workers=0, generator=torch.Generator(device=device))
 
 class Net(nn.Module):
     def __init__(self):
@@ -143,23 +139,6 @@ class Net(nn.Module):
         x = self.fc3(x)
         return x
 
-def compAcc(outputs, labels):
-    r = np.zeros((4), dtype=np.int32)
-    for idx, o in enumerate(outputs):
-        r[0 if labels[idx][1] >= 0.5 else 2] += 1
-        if torch.argmax(o) == (1 if (labels[idx][1] >= 0.5) else 0):
-            r[1 if torch.argmax(o) == 1 else 3] += 1
-    return r
-
-
-def compAcc(outputs, labels):
-    r = np.zeros((4), dtype=np.int32)
-    for idx, o in enumerate(outputs):
-        r[0 if labels[idx][1] >= 0.5 else 2] += 1
-        if torch.argmax(o) == (1 if (labels[idx][1] >= 0.5) else 0):
-            r[1 if torch.argmax(o) == 1 else 3] += 1
-    return r
-
 def getStats(s):
     tp = s[1]
     tn = s[3]
@@ -175,37 +154,6 @@ def getStats(s):
         r = 1
     f1 = 2 * p * r / (p + r)
     return f'acc: {acc:.2f} f1: {f1:.2f} {tp} {fp} {tn} {fn}'
-
-'''
-def compAcc(outputs, labels):
-    r = np.zeros((4), dtype=np.int32)
-    for idx, o in enumerate(outputs):
-        r[0 if labels[idx] >= 0.5 else 2] += 1
-        if (o >= 0.5) == (labels[idx] >= 0.5):
-            r[1 if o >= 0.5 else 3] += 1
-    return r
-'''
-
-def getStats(s):
-    try:
-        tp = s[1]
-        tn = s[3]
-        fp = s[0] - tp
-        fn = s[2] - tn
-        tot = s[0] + s[2]
-        acc = (tp + tn) / tot * 100
-        p = tp / (tp + fp)
-        if tp + fn == 0:
-            r = 1
-        else:
-            r = tp / (tp + fn)
-        if p + r == 0:
-            r = 1
-        f1 = 2 * p * r / (p + r)
-        return f'acc: {acc:.2f} f1: {f1:.2f} {tp} {fp} {tn} {fn}'
-    except:
-        return ''
-
 
 def train():
     net = Net().to(device)
@@ -296,9 +244,6 @@ def test(net):
 if __name__ == '__main__':
     torch.set_default_device(device)
     torch.multiprocessing.set_start_method('spawn', force=True)
-    torch.manual_seed(123)
-    np.random.seed(123)
 
     net = train()
     test(net)
-
